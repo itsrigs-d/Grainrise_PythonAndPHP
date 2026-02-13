@@ -837,33 +837,85 @@
 </section>
 
 <script>
-    /* Mobile menu toggle (updated for overlay panel) */
+    /* MOBILE MENU: scroll lock + clean link navigation */
     const menuBtn = document.getElementById('menuBtn');
     const mobileMenu = document.getElementById('mobileMenu');
     const mobileBackdrop = document.getElementById('mobileBackdrop');
     const mobileMenuPanel = document.getElementById('mobileMenuPanel');
 
+    let savedScrollY = 0;
+
     const isMenuOpen = () => mobileMenu && !mobileMenu.classList.contains('hidden');
 
-    const setMenuState = (isOpen) => {
-        if (!mobileMenu || !menuBtn) return;
-        mobileMenu.classList.toggle('hidden', !isOpen);
-        menuBtn.setAttribute('aria-expanded', String(isOpen));
-    };
+    function lockBodyScroll() {
+    savedScrollY = window.scrollY || 0;
 
-    menuBtn?.addEventListener('click', () => {
-        const open = isMenuOpen();
-        setMenuState(!open);
-    });
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${savedScrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    }
 
-    mobileMenuPanel?.querySelectorAll('a').forEach(a => {
-        a.addEventListener('click', () => setMenuState(false));
-    });
+    function unlockBodyScroll() {
+    const top = document.body.style.top;
+
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    document.body.style.right = '';
+    document.body.style.width = '';
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+
+    const y = top ? Math.abs(parseInt(top, 10)) : savedScrollY;
+    window.scrollTo(0, y);
+    }
+
+    function setMenuState(open) {
+    if (!mobileMenu || !menuBtn) return;
+
+    mobileMenu.classList.toggle('hidden', !open);
+    menuBtn.setAttribute('aria-expanded', String(open));
+
+    if (open) lockBodyScroll();
+    else unlockBodyScroll();
+    }
+
+    menuBtn?.addEventListener('click', () => setMenuState(!isMenuOpen()));
 
     mobileBackdrop?.addEventListener('click', () => setMenuState(false));
 
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') setMenuState(false);
+    if (e.key === 'Escape') setMenuState(false);
+    });
+
+    // Stop “scroll bleed” on overlay
+    mobileBackdrop?.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    mobileBackdrop?.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+
+    // Close menu + smooth scroll to section (with header offset)
+    mobileMenuPanel?.querySelectorAll('a[href^="#"]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+        e.preventDefault();
+
+        const href = a.getAttribute('href');
+        const target = href ? document.querySelector(href) : null;
+
+        setMenuState(false);
+
+        requestAnimationFrame(() => {
+        if (!target) return;
+
+        const header = document.getElementById('siteHeader');
+        const offset = header ? header.offsetHeight : 92;
+
+        const y = target.getBoundingClientRect().top + window.scrollY - offset + 8;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+        });
+    });
     });
 
     /* Header scroll state */

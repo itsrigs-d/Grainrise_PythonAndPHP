@@ -277,18 +277,31 @@
                                 </button>
                             </div>
 
-                            <!-- Length indicator -->
+                            <!-- Requirement only (clean) -->
                             <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold">
                                 <span id="len_badge"
                                     class="inline-flex items-center gap-1 rounded-full px-2 py-1
                                             bg-white/80 ring-1 ring-black/5 text-green-900/70">
                                     • Minimum 8 characters
                                 </span>
+                            </div>
 
-                                <span class="inline-flex items-center gap-1 rounded-full px-2 py-1
-                                            bg-white/70 ring-1 ring-black/5 text-green-900/55">
-                                    ◦ Tip: 10–12 characters is more secure
-                                </span>
+                            <!-- Strength Meter (HIDDEN until user types) -->
+                            <div id="strength_wrap" class="mt-3 hidden">
+                                <div class="flex items-center justify-between text-[11px] font-semibold">
+                                    <span class="text-green-900/70">Password strength</span>
+                                    <span id="strength_label" class="text-green-900/70 font-extrabold">—</span>
+                                </div>
+
+                                <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-black/10 ring-1 ring-black/5">
+                                    <div id="strength_bar"
+                                         class="h-full w-0 rounded-full bg-green-900/30 transition-[width] duration-200 ease-out">
+                                    </div>
+                                </div>
+
+                                <div id="strength_hint" class="mt-1 text-[11px] font-semibold text-green-900/55">
+                                    Tip: Use 10–12 characters with letters, numbers, and symbols.
+                                </div>
                             </div>
                         </div>
 
@@ -352,7 +365,7 @@
                                 • Passwords must match
                             </div>
                         </div>
-                        
+
                     </div>
 
                      <!-- Continue -->
@@ -398,7 +411,6 @@
 
         const openIcon = btn.querySelector('.eye-open');
         const offIcon  = btn.querySelector('.eye-off');
-
         if (openIcon && offIcon) {
             openIcon.classList.toggle('hidden', isHidden);
             offIcon.classList.toggle('hidden', !isHidden);
@@ -407,51 +419,156 @@
         btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
     }
 
-    // password and confirm password validations
+    // Password logic UPDATED to match your Reset Password page exactly
     (function () {
         const pass = document.getElementById('password');
         const conf = document.getElementById('password_confirmation');
+
         const lenBadge = document.getElementById('len_badge');
         const matchRow = document.getElementById('match_row');
 
-        function setBadge(ok) {
-            if (!lenBadge) return;
+        const strengthWrap  = document.getElementById('strength_wrap');
+        const strengthBar   = document.getElementById('strength_bar');
+        const strengthLabel = document.getElementById('strength_label');
+        const strengthHint  = document.getElementById('strength_hint');
 
-            lenBadge.classList.toggle('text-green-900/70', !ok);
-            lenBadge.classList.toggle('text-green-900', ok);
-            lenBadge.classList.toggle('ring-black/5', !ok);
-            lenBadge.classList.toggle('ring-green-900/20', ok);
-            lenBadge.classList.toggle('bg-white/80', !ok);
-            lenBadge.classList.toggle('bg-emerald-50', ok);
+        function setBadge(badgeEl, ok, okText, badText) {
+            if (!badgeEl) return;
 
-            lenBadge.textContent = ok
-                ? '✓ Minimum 8 characters'
-                : '• Minimum 8 characters';
+            badgeEl.classList.toggle('text-green-900/70', !ok);
+            badgeEl.classList.toggle('text-green-900', ok);
+            badgeEl.classList.toggle('ring-black/5', !ok);
+            badgeEl.classList.toggle('ring-green-900/20', ok);
+            badgeEl.classList.toggle('bg-white/80', !ok);
+            badgeEl.classList.toggle('bg-emerald-50', ok);
+
+            badgeEl.textContent = ok ? okText : badText;
+        }
+
+        function scorePassword(p) {
+            let score = 0;
+            const length = p.length;
+
+            // character variety
+            const hasLower = /[a-z]/.test(p);
+            const hasUpper = /[A-Z]/.test(p);
+            const hasNum   = /[0-9]/.test(p);
+            const hasSym   = /[^A-Za-z0-9]/.test(p);
+
+            // length contribution
+            if (length >= 8) score += 1;
+            if (length >= 10) score += 1;
+            if (length >= 12) score += 1;
+
+            const varietyCount = [hasLower, hasUpper, hasNum, hasSym].filter(Boolean).length;
+            if (varietyCount >= 2) score += 1;
+            if (varietyCount >= 3) score += 1;
+            if (varietyCount === 4) score += 1;
+
+            // penalty for obvious patterns
+            if (/^(.)\1+$/.test(p)) score = Math.max(0, score - 2);
+            if (/1234|abcd|qwerty|password/i.test(p)) score = Math.max(0, score - 2);
+
+            score = Math.min(7, Math.max(0, score));
+
+            // Keep “Too short” ONLY when length < 8
+            if (length < 8) {
+                return { label: 'Too short', pct: 15, intensity: 'low', hint: 'Must be at least 8 characters.' };
+            }
+
+            let label = 'Weak', pct = 35, intensity = 'low', hint = 'Try adding numbers or symbols.';
+            if (score <= 2) {
+                label = 'Weak';
+                pct = 35;
+                intensity = 'low';
+                hint = 'Try 10–12 characters and mix letters/numbers.';
+            } else if (score <= 4) {
+                label = 'Fair';
+                pct = 60;
+                intensity = 'mid';
+                hint = 'Good—make it longer and avoid common patterns.';
+            } else if (score <= 6) {
+                label = 'Good';
+                pct = 80;
+                intensity = 'high';
+                hint = 'Nice—avoid common words and repeated characters.';
+            } else {
+                label = 'Strong';
+                pct = 100;
+                intensity = 'max';
+                hint = 'Strong password.';
+            }
+
+            return { label, pct, intensity, hint };
+        }
+
+        function paintStrength(intensity) {
+            if (!strengthBar) return;
+
+            strengthBar.classList.remove('bg-green-900/20', 'bg-green-900/35', 'bg-green-900/55', 'bg-green-900/75', 'bg-green-900');
+
+            if (intensity === 'low') strengthBar.classList.add('bg-green-900/25');
+            else if (intensity === 'mid') strengthBar.classList.add('bg-green-900/45');
+            else if (intensity === 'high') strengthBar.classList.add('bg-green-900/70');
+            else if (intensity === 'max') strengthBar.classList.add('bg-green-900');
+            else strengthBar.classList.add('bg-green-900/20');
         }
 
         function update() {
-            const p = pass.value || '';
-            const c = conf.value || '';
+            const p = pass?.value ?? '';
+            const c = conf?.value ?? '';
 
-            const lenOk = p.length >= 8;
-            const matchOk = p && c && p === c;
+            // required rules only
+            const lenOk   = p.length >= 8;
+            const matchOk = p.length > 0 && c.length > 0 && p === c;
 
-            setBadge(lenOk);
+            // length badge (required)
+            setBadge(lenBadge, lenOk, '✓ Minimum 8 characters', '• Minimum 8 characters');
 
-            if (!p && !c) {
-                matchRow.textContent = '• Passwords must match';
-                matchRow.className = 'mt-2 text-[11px] font-semibold text-green-900/70';
-            } else if (matchOk) {
-                matchRow.textContent = '✓ Passwords match';
-                matchRow.className = 'mt-2 text-[11px] font-extrabold text-green-900';
-            } else if (c) {
-                matchRow.textContent = '✕ Passwords do not match';
-                matchRow.className = 'mt-2 text-[11px] font-extrabold text-red-600';
+            // Hide strength meter until user types
+            if (strengthWrap) {
+                strengthWrap.classList.toggle('hidden', p.length === 0);
+            }
+
+            // strength meter (guidance) - only update when visible/typing
+            if (p.length > 0) {
+                const s = scorePassword(p);
+                if (strengthBar) strengthBar.style.width = `${s.pct}%`;
+                if (strengthLabel) strengthLabel.textContent = s.label;
+                if (strengthHint) strengthHint.textContent = s.hint;
+                paintStrength(s.intensity);
+            } else {
+                 // reset bar when empty
+                if (strengthBar) strengthBar.style.width = '0%';
+                if (strengthLabel) strengthLabel.textContent = '—';
+                if (strengthHint) strengthHint.textContent = 'Tip: Use 10–12 characters with letters, numbers, and symbols.';
+                paintStrength('muted');
+            }
+
+            // match indicator behavior
+            if (matchRow) {
+                const pHas = p.length > 0;
+                const cHas = c.length > 0;
+
+                if (!pHas && !cHas) {
+                    matchRow.textContent = '• Passwords must match';
+                    matchRow.className = 'mt-2 text-[11px] font-semibold text-green-900/70';
+                } else if (pHas && cHas && matchOk) {
+                    matchRow.textContent = '✓ Passwords match';
+                    matchRow.className = 'mt-2 text-[11px] font-extrabold text-green-900';
+                } else if (cHas) {
+                    matchRow.textContent = '✕ Passwords do not match';
+                    matchRow.className = 'mt-2 text-[11px] font-extrabold text-red-600';
+                } else {
+                    matchRow.textContent = '• Passwords must match';
+                    matchRow.className = 'mt-2 text-[11px] font-semibold text-green-900/70';
+                }
             }
         }
 
-        pass.addEventListener('input', update);
-        conf.addEventListener('input', update);
+        pass?.addEventListener('input', update);
+        conf?.addEventListener('input', update);
+
         update();
     })();
 </script>
